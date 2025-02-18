@@ -50,9 +50,15 @@ export const quizQuestions = [
     type: "numeric-input",
     correctAnswer: 1776,
 },
- { id: 10,
+ { id: 9,
     question: "If a car travels at 60 mph for 2 hours, how many miles does it travel?",
     type: "numeric-input",
     correctAnswer: 120,
 },
+{
+  id:10,
+  question:"What is the value of pi rounded to the nearest integer?",
+  type:"numeric-input",
+  correctAnswer:3,
+}
 ];
