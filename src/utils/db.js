@@ -23,3 +23,10 @@ export async function getQuizAttempts() {
   const db = await initDB();
   return db.getAll(storeName);
 }
+
+export async function clearQuizAttempts() {
+  const db = await initDB();
+  const tx = db.transaction(storeName, 'readwrite');
+  await tx.objectStore(storeName).clear();
+  return tx.done;
+}

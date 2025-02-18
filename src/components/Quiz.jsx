@@ -1,39 +1,25 @@
 import { useState, useEffect } from 'react';
 import { saveQuizAttempt } from '../utils/db';
 import { format } from 'date-fns';
+import Timer from './Timer';
 
 const SECONDS_PER_QUESTION = 30;
 
 export default function Quiz({ questions, onComplete }) {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState('');
+  const [numericAnswer, setNumericAnswer] = useState('');
   const [score, setScore] = useState(0);
   const [showResult, setShowResult] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(SECONDS_PER_QUESTION);
   const [totalTime, setTotalTime] = useState(0);
   const [answers, setAnswers] = useState([]);
 
-  useEffect(() => {
-    const totalTimer = setInterval(() => {
-      if (!showResult) {
-        setTotalTime(prev => prev + 1);
-      }
-    }, 1000);
-
-    return () => clearInterval(totalTimer);
-  }, [showResult]);
-
-  useEffect(() => {
-    if (timeLeft > 0 && !showResult) {
-      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-      return () => clearTimeout(timer);
-    } else if (timeLeft === 0) {
-      handleNext();
-    }
-  }, [timeLeft, showResult]);
-
   const handleAnswerSelect = (answer) => {
     setSelectedAnswer(answer);
+  };
+
+  const handleNumericInput = (e) => {
+    setNumericAnswer(e.target.value);
   };
 
   const formatTime = (seconds) => {
@@ -42,13 +28,38 @@ export default function Quiz({ questions, onComplete }) {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
+  const handleTimeUp = () => {
+    handleNext();
+  };
+
+  useEffect(() => {
+    if (!showResult) {
+      const totalTimer = setInterval(() => {
+        setTotalTime(prev => prev + 1);
+      }, 1000);
+      return () => clearInterval(totalTimer);
+    }
+  }, [showResult]);
+
   const handleNext = async () => {
-    const isCorrect = selectedAnswer === questions[currentQuestion].correctAnswer;
+    const currentQ = questions[currentQuestion];
+    let isCorrect = false;
+    let userAnswer;
+    
+    if (currentQ.type === 'multiple-choice') {
+      isCorrect = selectedAnswer === currentQ.correctAnswer;
+      userAnswer = selectedAnswer;
+    } else if (currentQ.type === 'numeric-input') {
+      const numValue = Number(numericAnswer);
+      const tolerance = currentQ.tolerance || 0;
+      isCorrect = Math.abs(numValue - currentQ.correctAnswer) <= tolerance;
+      userAnswer = numericAnswer;
+    }
     
     setAnswers([...answers, {
-      question: questions[currentQuestion].question,
-      selectedAnswer,
-      correctAnswer: questions[currentQuestion].correctAnswer,
+      question: currentQ.question,
+      selectedAnswer: userAnswer,
+      correctAnswer: currentQ.correctAnswer.toString(),
       isCorrect
     }]);
 
@@ -59,7 +70,7 @@ export default function Quiz({ questions, onComplete }) {
     if (currentQuestion + 1 < questions.length) {
       setCurrentQuestion(currentQuestion + 1);
       setSelectedAnswer('');
-      setTimeLeft(SECONDS_PER_QUESTION);
+      setNumericAnswer('');
     } else {
       const attempt = {
         date: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
@@ -67,9 +78,9 @@ export default function Quiz({ questions, onComplete }) {
         totalQuestions: questions.length,
         totalTime,
         answers: [...answers, {
-          question: questions[currentQuestion].question,
-          selectedAnswer,
-          correctAnswer: questions[currentQuestion].correctAnswer,
+          question: currentQ.question,
+          selectedAnswer: userAnswer,
+          correctAnswer: currentQ.correctAnswer.toString(),
           isCorrect
         }]
       };
@@ -78,6 +89,52 @@ export default function Quiz({ questions, onComplete }) {
       setShowResult(true);
       onComplete();
     }
+  };
+
+  const renderQuestion = () => {
+    const currentQ = questions[currentQuestion];
+    
+    if (currentQ.type === 'multiple-choice') {
+      return (
+        <div className="space-y-2">
+          {currentQ.options.map((option) => (
+            <button
+              key={option}
+              onClick={() => handleAnswerSelect(option)}
+              className={`w-full p-3 text-left rounded-lg ${
+                selectedAnswer === option
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 hover:bg-gray-200'
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      );
+    } else if (currentQ.type === 'numeric-input') {
+      return (
+        <div className="space-y-4">
+          <input
+            type="number"
+            value={numericAnswer}
+            onChange={handleNumericInput}
+            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Enter your answer"
+          />
+        </div>
+      );
+    }
+  };
+  
+  const isAnswerSelected = () => {
+    const currentQ = questions[currentQuestion];
+    if (currentQ.type === 'multiple-choice') {
+      return selectedAnswer !== '';
+    } else if (currentQ.type === 'numeric-input') {
+      return numericAnswer !== '';
+    }
+    return false;
   };
 
   if (showResult) {
@@ -103,32 +160,20 @@ export default function Quiz({ questions, onComplete }) {
     <div className="max-w-lg mx-auto p-6 bg-white rounded-lg shadow-md">
       <div className="mb-4 flex justify-between items-center">
         <span className="text-sm">Question {currentQuestion + 1} of {questions.length}</span>
-        <div className="text-sm font-medium space-x-4">
-          <span>Total time: {formatTime(totalTime)}</span>
-          <span>Time left: {timeLeft}s</span>
-        </div>
+        <Timer 
+          totalTime={totalTime}
+          isRunning={!showResult}
+          onTimerComplete={handleTimeUp}
+          timeLimit={SECONDS_PER_QUESTION}
+        />
       </div>
       <div className="mb-6">
         <h2 className="text-xl font-bold mb-4">{questions[currentQuestion].question}</h2>
-        <div className="space-y-2">
-          {questions[currentQuestion].options.map((option) => (
-            <button
-              key={option}
-              onClick={() => handleAnswerSelect(option)}
-              className={`w-full p-3 text-left rounded-lg ${
-                selectedAnswer === option
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 hover:bg-gray-200'
-              }`}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
+        {renderQuestion()}
       </div>
       <button
         onClick={handleNext}
-        disabled={!selectedAnswer}
+        disabled={!isAnswerSelected()}
         className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg disabled:opacity-50"
       >
         {currentQuestion === questions.length - 1 ? 'Finish' : 'Next'}
